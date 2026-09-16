@@ -472,7 +472,7 @@
       </dl>
 
       <footer>
-        Search runs in your browser over the whole reachable space, so every count is measured, not quoted. <code>Nodes expanded</code> counts nodes taken off the frontier and expanded; breadth-first search tests goals as nodes are generated.
+        Search runs in your browser over the whole reachable space, so every count is measured, not quoted. <code>Nodes expanded</code> counts nodes taken off the frontier and expanded. Every action costs 1 here, so uniform-cost search explores in the same order as breadth-first and expands slightly more: it only tests a node for goalhood once that node comes off the frontier, while breadth-first tests as soon as a node is generated. Exact counts shift a little with how ties in the frontier are broken.
       </footer>
     </div>
   </div>
@@ -746,11 +746,14 @@
     return {expanded:expanded, actions:null, ms:performance.now()-t0};
   }
 
+  function zero(){ return 0; }
+
   var STRATS = [
-    {id:"bfs",   name:"Breadth-first",  sub:"uninformed · optimal here",      run:function(s){ return bfs(s); },                  heavy:true},
-    {id:"greedy",name:"Greedy best-first", sub:"f = h₂ · fast, not optimal",  run:function(s){ return bestFirst(s, h2, false); }},
-    {id:"astar1",name:"A* with h₁",     sub:"f = g + misplaced tiles",        run:function(s){ return bestFirst(s, h1, true); }},
-    {id:"astar2",name:"A* with h₂",     sub:"f = g + Manhattan distance",     run:function(s){ return bestFirst(s, h2, true); }}
+    {id:"bfs",   name:"Breadth-first",     sub:"uninformed · goal test on generation", run:function(s){ return bfs(s); }},
+    {id:"ucs",   name:"Uniform-cost",      sub:"f = g · goal test on expansion",       run:function(s){ return bestFirst(s, zero, true); }},
+    {id:"greedy",name:"Greedy best-first", sub:"f = h₂ · fast, not optimal",           run:function(s){ return bestFirst(s, h2, false); }},
+    {id:"astar1",name:"A* with h₁",        sub:"f = g + misplaced tiles",              run:function(s){ return bestFirst(s, h1, true); }},
+    {id:"astar2",name:"A* with h₂",        sub:"f = g + Manhattan distance",           run:function(s){ return bestFirst(s, h2, true); }}
   ];
   var runs = {};
 
@@ -759,7 +762,7 @@
   function drawResults(){
     results.innerHTML = "";
     // Only optimal strategies establish the benchmark length.
-    var lengths = ["bfs","astar1","astar2"]
+    var lengths = ["bfs","ucs","astar1","astar2"]
       .filter(function(k){ return runs[k] && runs[k].actions; })
       .map(function(k){ return runs[k].actions.length; });
     best = lengths.length ? Math.min.apply(null, lengths) : null;
