@@ -1,0 +1,950 @@
+<title>8-Puzzle Search Lab</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+  :root{
+    --ground:#e8ecee;
+    --surface:#ffffff;
+    --surface-2:#f2f5f6;
+    --ink:#0f2230;
+    --muted:#5c7382;
+    --line:#ccd7dc;
+    --line-soft:#e0e7ea;
+    --tile-bg:#dbe9f0;
+    --tile-fg:#10394c;
+    --tile-edge:#1b6e91;
+    --blank:#1b6e91;
+    --accent:#a8134a;
+    --accent-soft:#f6dfe7;
+    --good:#186c57;
+    --good-soft:#d9ece5;
+    --warn:#8a5a0d;
+    --shadow:0 1px 2px rgba(15,34,48,.08), 0 8px 24px -16px rgba(15,34,48,.4);
+    --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0c1317;
+      --surface:#141e24;
+      --surface-2:#1a262d;
+      --ink:#e3edf2;
+      --muted:#93a8b4;
+      --line:#27363f;
+      --line-soft:#1e2c34;
+      --tile-bg:#17404f;
+      --tile-fg:#d4eaf4;
+      --tile-edge:#2c88ad;
+      --blank:#0a2a36;
+      --accent:#ff6e97;
+      --accent-soft:#3b1425;
+      --good:#4cb394;
+      --good-soft:#12352c;
+      --warn:#d9a441;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0c1317;
+    --surface:#141e24;
+    --surface-2:#1a262d;
+    --ink:#e3edf2;
+    --muted:#93a8b4;
+    --line:#27363f;
+    --line-soft:#1e2c34;
+    --tile-bg:#17404f;
+    --tile-fg:#d4eaf4;
+    --tile-edge:#2c88ad;
+    --blank:#0a2a36;
+    --accent:#ff6e97;
+    --accent-soft:#3b1425;
+    --good:#4cb394;
+    --good-soft:#12352c;
+    --warn:#d9a441;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+  }
+
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:1120px;
+    margin:0 auto;
+    padding-inline:16px;
+    padding-block:28px 56px;
+  }
+  h1,h2,h3{margin:0;text-wrap:balance}
+  button{font:inherit;color:inherit}
+
+  /* ---------- header ---------- */
+  .masthead{
+    display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 24px;
+    padding-bottom:16px;border-bottom:2px solid var(--ink);
+  }
+  .masthead h1{
+    font-family:var(--serif);font-weight:700;font-size:clamp(28px,5vw,40px);
+    letter-spacing:-.015em;line-height:1.05;
+  }
+  .kicker{
+    font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);display:block;margin-bottom:6px;
+  }
+  .masthead p{margin:0 0 3px;color:var(--muted);max-width:44ch;font-size:14px}
+
+  /* ---------- layout ---------- */
+  .cols{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:28px;margin-top:26px;align-items:start}
+  @media (max-width:860px){.cols{grid-template-columns:1fr;gap:22px}}
+
+  .panel{
+    background:var(--surface);border:1px solid var(--line);border-radius:4px;
+    box-shadow:var(--shadow);
+  }
+  .panel + .panel{margin-top:18px}
+  .panel-hd{
+    display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:12px 16px;border-bottom:1px solid var(--line-soft);
+  }
+  .panel-hd h2{font-family:var(--serif);font-size:16px;font-weight:600}
+  .panel-bd{padding:16px}
+
+  /* ---------- board ---------- */
+  .board-stage{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 16px 16px}
+  .board{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:6px;
+    width:min(100%,318px);aspect-ratio:1;max-width:100%;
+    background:var(--tile-edge);padding:6px;border-radius:3px;
+  }
+  .cell{
+    border:0;padding:0;border-radius:2px;position:relative;
+    font-family:var(--serif);font-size:clamp(26px,7vw,36px);font-weight:600;
+    background:var(--tile-bg);color:var(--tile-fg);
+    display:flex;align-items:center;justify-content:center;
+    cursor:not-allowed;transition:transform .09s ease, filter .12s ease;
+    font-variant-numeric:tabular-nums;
+  }
+  .cell.blank{background:var(--blank);color:transparent;cursor:default}
+  .cell.movable{cursor:pointer}
+  .cell.movable:hover{filter:brightness(1.06);transform:scale(1.02)}
+  .cell.placed::after{
+    content:"";position:absolute;inset:auto 0 0 0;height:4px;background:var(--good);
+    border-radius:0 0 2px 2px;
+  }
+  .cell:focus-visible{outline:3px solid var(--accent);outline-offset:2px;z-index:2}
+  .board.solved{background:var(--good)}
+
+  .readout{
+    display:flex;gap:18px;flex-wrap:wrap;justify-content:center;align-items:center;
+    font-family:var(--mono);font-size:12px;color:var(--muted);
+  }
+  .readout b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+  .banner{
+    display:none;width:100%;text-align:center;font-family:var(--mono);font-size:12px;
+    letter-spacing:.08em;text-transform:uppercase;padding:7px;border-radius:3px;
+    background:var(--good-soft);color:var(--good);
+  }
+  .banner.on{display:block}
+
+  .controls{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 16px;justify-content:center}
+  .btn{
+    background:var(--surface-2);border:1px solid var(--line);border-radius:3px;
+    padding:7px 12px;font-size:13px;cursor:pointer;transition:background .12s,border-color .12s;
+  }
+  .btn:hover{background:var(--accent-soft);border-color:var(--accent)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn:disabled{opacity:.42;cursor:not-allowed;background:var(--surface-2);border-color:var(--line)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .hint{font-family:var(--mono);font-size:11.5px;color:var(--muted);text-align:center;padding:0 16px 14px;line-height:1.45}
+
+  /* ---------- formulation rows ---------- */
+  .spec{display:grid;gap:0}
+  .row{display:grid;grid-template-columns:132px minmax(0,1fr);gap:14px;padding:13px 16px;border-bottom:1px solid var(--line-soft)}
+  .row:last-child{border-bottom:0}
+  @media (max-width:560px){.row{grid-template-columns:1fr;gap:6px}}
+  .row .lbl{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.04em;color:var(--ink);padding-top:2px}
+  .row .lbl small{display:block;font-weight:400;letter-spacing:0;color:var(--muted);font-size:10.5px;margin-top:3px;line-height:1.35;text-transform:none}
+  .val{min-width:0}
+  .tuple{font-family:var(--mono);font-size:13.5px;letter-spacing:.02em;word-break:break-word}
+  .tuple .blankmark{color:var(--accent);font-weight:600}
+  .note{font-size:12px;color:var(--muted);margin-top:4px}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{
+    font-family:var(--mono);font-size:12px;padding:5px 10px;border-radius:2px;cursor:pointer;
+    background:var(--surface-2);border:1px solid var(--line);transition:all .12s;
+  }
+  .chip:hover,.chip.hot{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .mini{display:grid;grid-template-columns:repeat(3,22px);gap:2px;background:var(--tile-edge);padding:2px;border-radius:2px;width:max-content}
+  .mini span{
+    background:var(--tile-bg);color:var(--tile-fg);font-family:var(--mono);font-size:11px;
+    height:22px;display:flex;align-items:center;justify-content:center;border-radius:1px;
+  }
+  .mini span.b{background:var(--blank)}
+  .mini-pair{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+  .mini-cap{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:5px}
+
+  .pill{
+    display:inline-block;font-family:var(--mono);font-size:11.5px;font-weight:600;
+    padding:3px 9px;border-radius:2px;background:var(--surface-2);border:1px solid var(--line);
+  }
+  .pill.t{background:var(--good-soft);border-color:var(--good);color:var(--good)}
+
+  /* ---------- search lab ---------- */
+  .tbl-wrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:520px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line-soft)}
+  th{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--muted);font-weight:500;white-space:nowrap;
+  }
+  td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  .strat{font-weight:500}
+  .strat small{display:block;color:var(--muted);font-weight:400;font-size:11.5px}
+  .opt{color:var(--good);font-family:var(--mono);font-size:11px}
+  .subopt{color:var(--warn);font-family:var(--mono);font-size:11px}
+
+  .plan{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+  .step{
+    font-family:var(--mono);font-size:11px;padding:3px 7px;border-radius:2px;
+    background:var(--surface-2);border:1px solid var(--line-soft);color:var(--muted);
+  }
+  .step.done{background:var(--accent-soft);border-color:var(--accent-soft);color:var(--ink)}
+  .step.now{background:var(--accent);border-color:var(--accent);color:#fff}
+  .playbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+  .playbar .count{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .facts{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+    background:var(--line-soft);border:1px solid var(--line);border-radius:4px;overflow:hidden;margin-top:18px;
+  }
+  .fact{background:var(--surface);padding:12px 14px}
+  .fact dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .fact dd{margin:5px 0 0;font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums}
+  .fact dd small{font-family:var(--sans);font-size:11.5px;color:var(--muted);display:block;margin-top:2px}
+
+  footer{margin-top:26px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+  footer code{font-family:var(--mono);font-size:11.5px}
+
+  /* ---------- share / QR ---------- */
+  .share-btn{
+    margin-left:auto;align-self:center;background:var(--surface);border:1px solid var(--line);
+    border-radius:3px;padding:8px 14px;font-size:13px;cursor:pointer;display:flex;gap:8px;align-items:center;
+    box-shadow:var(--shadow);transition:background .12s,border-color .12s;
+  }
+  .share-btn:hover{background:var(--accent-soft);border-color:var(--accent)}
+  .share-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .share-btn svg{width:15px;height:15px;display:block}
+
+  .overlay{
+    position:fixed;inset:0;z-index:50;background:var(--ground);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+    padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));
+    overflow-y:auto;
+  }
+  .overlay h2{font-family:var(--serif);font-size:clamp(20px,3.2vw,28px);text-align:center}
+  .qr-card{background:#fff;padding:18px;border-radius:4px;box-shadow:var(--shadow);line-height:0}
+  .qr-card img,.qr-card canvas{display:block;max-width:100%;height:auto}
+  .qr-url{
+    font-family:var(--mono);font-size:13px;word-break:break-all;text-align:center;
+    max-width:min(100%,46ch);color:var(--ink);
+  }
+  .qr-form{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:min(100%,520px)}
+  .qr-form input{
+    flex:1;min-width:0;font-family:var(--mono);font-size:13px;padding:8px 10px;
+    background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:3px;
+  }
+  .qr-form input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .overlay .note{text-align:center;max-width:46ch}
+
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div>
+      <span class="kicker">3.2.1 · Problem formulation</span>
+      <h1>The 8-Puzzle</h1>
+    </div>
+    <p>Play it, and watch the five parts of a search problem — state, actions, transition model, goal test, path cost — update with every move.</p>
+    <button class="share-btn" id="btnQR" type="button">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1 1h6v6H1V1zm1.5 1.5v3h3v-3h-3zM9 1h6v6H9V1zm1.5 1.5v3h3v-3h-3zM1 9h6v6H1V9zm1.5 1.5v3h3v-3h-3zM9 9h2v2H9V9zm4 0h2v2h-2V9zm-4 4h2v2H9v-2zm4 0h2v2h-2v-2z"/></svg>
+      Project QR code
+    </button>
+  </header>
+
+  <div class="cols">
+    <!-- ============ LEFT: the board ============ -->
+    <div>
+      <section class="panel">
+        <div class="panel-hd">
+          <h2>Current state</h2>
+          <span class="pill" id="statusPill">in progress</span>
+        </div>
+        <div class="board-stage">
+          <div class="banner" id="banner">Goal state reached</div>
+          <div class="board" id="board" role="grid" aria-label="8-puzzle board"></div>
+          <div class="readout">
+            <span>g (moves) <b id="gCount">0</b></span>
+            <span>h₁ <b id="h1">0</b></span>
+            <span>h₂ <b id="h2">0</b></span>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="btn" id="btnUndo">Undo</button>
+          <button class="btn" id="btnReset">Initial state</button>
+          <button class="btn" id="btnGoal">Goal state</button>
+          <button class="btn" id="btnScramble">Scramble</button>
+        </div>
+        <p class="hint">Click a tile next to the blank, or use the arrow keys.<br>Arrow keys move <em>the blank</em> — that is what the action is named after.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd"><h2>Move log</h2><span class="pill" id="logLen">0 actions</span></div>
+        <div class="panel-bd">
+          <div class="plan" id="log"><span class="step">start</span></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ RIGHT: formulation + search ============ -->
+    <div>
+      <section class="panel">
+        <div class="panel-hd"><h2>Problem formulation</h2><span class="pill">live</span></div>
+        <div class="spec">
+          <div class="row">
+            <div class="lbl">STATE<small>How is a state represented?</small></div>
+            <div class="val">
+              <div class="tuple" id="stateTuple"></div>
+              <div class="note">A 9-tuple read row by row; <span class="blankmark">□</span> is the blank. 9! = 362,880 arrangements, half of them reachable from any given one.</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="lbl">INITIAL<small>Which arrangement do we start from?</small></div>
+            <div class="val">
+              <div class="tuple">(7, 2, 4, 5, <span class="blankmark">□</span>, 6, 8, 3, 1)</div>
+              <div class="note">The arrangement on the slide. <b id="optLen">26</b> moves is the shortest solution — confirmed by A* below.</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="lbl">ACTIONS(s)<small>Which actions are applicable here?</small></div>
+            <div class="val">
+              <div class="chips" id="actions"></div>
+              <div class="note">Named for the direction <em>the blank</em> travels. A corner blank gives 2 actions, an edge 3, the centre 4 — mean branching factor ≈ 2.67.</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="lbl">RESULT(s,a)<small>What does the transition model do?</small></div>
+            <div class="val">
+              <div class="mini-pair">
+                <div>
+                  <div class="mini-cap" id="resultCap">RESULT(s, Up)</div>
+                  <div class="mini" id="resultMini"></div>
+                </div>
+                <div class="note" style="flex:1;min-width:150px;margin-top:0">Swaps the blank with the neighbouring tile. Hover or focus an action above to preview its result.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="lbl">IS-GOAL(s)<small>What counts as a goal?</small></div>
+            <div class="val">
+              <div class="mini-pair">
+                <div>
+                  <div class="mini-cap">Goal state</div>
+                  <div class="mini" id="goalMini"></div>
+                </div>
+                <div style="flex:1;min-width:150px">
+                  <span class="pill" id="goalPill">IS-GOAL(s) = false</span>
+                  <div class="note"><b id="placed">0</b> of 8 tiles already sit in their goal square (green underline on the board).</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="lbl">COST<small>What is the action and path cost?</small></div>
+            <div class="val">
+              <div class="tuple">c(s, a, s′) = 1 &nbsp;⟹&nbsp; g(n) = <b id="gCount2">0</b></div>
+              <div class="note">Every slide costs the same, so path cost is just the number of moves and breadth-first search already returns an optimal plan — at a price you can measure below.</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="lbl">HEURISTICS<small>Looking ahead to §3.6</small></div>
+            <div class="val">
+              <div class="tuple">h₁ misplaced tiles = <b id="h1b">0</b> &nbsp;·&nbsp; h₂ Manhattan = <b id="h2b">0</b></div>
+              <div class="note">Both never overestimate, and h₂ ≥ h₁ everywhere — that dominance is exactly what the node counts below make visible.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd">
+          <h2>Search lab</h2>
+          <button class="btn" id="btnRunAll">Run all on current state</button>
+        </div>
+        <div class="panel-bd">
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Strategy</th>
+                  <th style="text-align:right">Nodes expanded</th>
+                  <th style="text-align:right">Solution length</th>
+                  <th style="text-align:right">Time</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="results"></tbody>
+            </table>
+          </div>
+          <div id="planBox" hidden>
+            <div class="mini-cap" style="margin-top:16px" id="planCap">Plan</div>
+            <div class="plan" id="planSteps"></div>
+            <div class="playbar">
+              <button class="btn" id="btnFirst">⏮</button>
+              <button class="btn" id="btnPrev">◀</button>
+              <button class="btn primary" id="btnPlay">Play</button>
+              <button class="btn" id="btnNext">▶</button>
+              <button class="btn" id="btnLast">⏭</button>
+              <span class="count" id="planCount">step 0 / 0</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <dl class="facts">
+        <div class="fact"><dt>Reachable states</dt><dd>181,440<small>9! ÷ 2 — parity is invariant</small></dd></div>
+        <div class="fact"><dt>Inversions</dt><dd id="inv">0<small id="invNote">even — solvable</small></dd></div>
+        <div class="fact"><dt>Hardest instance</dt><dd>31 moves<small>diameter of the state space</small></dd></div>
+      </dl>
+
+      <footer>
+        Search runs in your browser over the whole reachable space, so every count is measured, not quoted. <code>Nodes expanded</code> counts nodes taken off the frontier and expanded; breadth-first search tests goals as nodes are generated.
+      </footer>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="qrOverlay" hidden>
+  <h2>Scan to play on your phone</h2>
+  <div class="qr-card" id="qrCard"></div>
+  <div class="qr-url" id="qrUrl"></div>
+  <div class="qr-form">
+    <input id="qrInput" type="url" aria-label="Link to encode" spellcheck="false" autocomplete="off">
+    <button class="btn" id="btnCopy" type="button">Copy link</button>
+    <button class="btn primary" id="btnClose" type="button">Close</button>
+  </div>
+  <p class="note">Paste whatever link the class should open. It is remembered in this browser, so the code is ready next time you project.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var GOAL  = [0,1,2,3,4,5,6,7,8];
+  var START = [7,2,4,5,0,6,8,3,1];
+  var GOALKEY = GOAL.join("");
+
+  var DIRS = [
+    {name:"Up",    d:-3, ok:function(b){return b>2;}},
+    {name:"Down",  d: 3, ok:function(b){return b<6;}},
+    {name:"Left",  d:-1, ok:function(b){return b%3!==0;}},
+    {name:"Right", d: 1, ok:function(b){return b%3!==2;}}
+  ];
+
+  function actionsFor(s){
+    var b = s.indexOf(0), out = [];
+    for (var i=0;i<DIRS.length;i++) if (DIRS[i].ok(b)) out.push({name:DIRS[i].name, tile:b+DIRS[i].d, blank:b});
+    return out;
+  }
+  function applyAt(s, tileIdx){
+    var b = s.indexOf(0), t = s.slice();
+    t[b] = s[tileIdx]; t[tileIdx] = 0;
+    return t;
+  }
+  function h1(s){ var n=0; for (var i=0;i<9;i++) if (s[i]!==0 && s[i]!==GOAL[i]) n++; return n; }
+  function h2(s){
+    var n=0;
+    for (var i=0;i<9;i++){
+      var v=s[i]; if (v===0) continue;
+      var g=GOAL.indexOf(v);
+      n += Math.abs((i/3|0)-(g/3|0)) + Math.abs(i%3 - g%3);
+    }
+    return n;
+  }
+  function inversions(s){
+    var a=s.filter(function(v){return v!==0;}), n=0;
+    for (var i=0;i<a.length;i++) for (var j=i+1;j<a.length;j++) if (a[i]>a[j]) n++;
+    return n;
+  }
+  function placedCount(s){ var n=0; for (var i=0;i<9;i++) if (s[i]!==0 && s[i]===GOAL[i]) n++; return n; }
+
+  // ---------- state ----------
+  var state = START.slice();
+  var log = [];           // action names taken by hand
+  var past = [];          // previous states for undo
+  var plan = null;        // {actions:[], states:[], label:""}
+  var planIdx = 0;
+  var timer = null;
+  var best = null;        // shortest solution length seen for the current state
+
+  var $ = function(id){ return document.getElementById(id); };
+  var board = $("board"), actionsEl = $("actions"), results = $("results");
+
+  // ---------- board ----------
+  var cells = [];
+  for (var i=0;i<9;i++){
+    var c = document.createElement("button");
+    c.className = "cell"; c.dataset.i = i; c.type = "button";
+    board.appendChild(c); cells.push(c);
+  }
+  board.addEventListener("click", function(e){
+    var c = e.target.closest(".cell"); if (!c || !c.classList.contains("movable")) return;
+    move(+c.dataset.i);
+  });
+  document.addEventListener("keydown", function(e){
+    var map = {ArrowUp:"Up", ArrowDown:"Down", ArrowLeft:"Left", ArrowRight:"Right"};
+    var name = map[e.key]; if (!name) return;
+    var acts = actionsFor(state);
+    for (var k=0;k<acts.length;k++) if (acts[k].name===name){ e.preventDefault(); move(acts[k].tile); return; }
+  });
+
+  function move(tileIdx){
+    var b = state.indexOf(0);
+    var d = tileIdx - b, name = null;
+    for (var i=0;i<DIRS.length;i++) if (DIRS[i].d===d && DIRS[i].ok(b)) name = DIRS[i].name;
+    if (!name) return;
+    stopPlay();
+    past.push(state.slice());
+    state = applyAt(state, tileIdx);
+    log.push(name);
+    if (plan) { plan = null; $("planBox").hidden = true; }
+    clearResults();
+    render();
+  }
+
+  function setState(s, label){
+    stopPlay();
+    past = []; log = []; state = s.slice(); plan = null;
+    $("planBox").hidden = true;
+    clearResults();
+    render();
+  }
+
+  // ---------- mini grids ----------
+  function mini(el, s){
+    el.innerHTML = "";
+    for (var i=0;i<9;i++){
+      var sp = document.createElement("span");
+      if (s[i]===0) sp.className = "b"; else sp.textContent = s[i];
+      el.appendChild(sp);
+    }
+  }
+
+  function tupleHTML(s){
+    return "(" + s.map(function(v){ return v===0 ? '<span class="blankmark">□</span>' : v; }).join(", ") + ")";
+  }
+
+  // ---------- render ----------
+  function render(){
+    var solved = state.join("") === GOALKEY;
+    var acts = actionsFor(state);
+    var movable = {};
+    acts.forEach(function(a){ movable[a.tile] = true; });
+
+    for (var i=0;i<9;i++){
+      var c = cells[i], v = state[i];
+      c.textContent = v===0 ? "" : v;
+      c.className = "cell" + (v===0 ? " blank" : "") + (movable[i] ? " movable" : "") + (v!==0 && v===GOAL[i] ? " placed" : "");
+      c.disabled = !movable[i];
+      c.setAttribute("aria-label", v===0 ? "blank square" : ("tile " + v + (movable[i] ? ", slide it into the blank" : "")));
+    }
+    board.classList.toggle("solved", solved);
+    $("banner").classList.toggle("on", solved);
+    $("statusPill").textContent = solved ? "goal" : "in progress";
+    $("statusPill").className = "pill" + (solved ? " t" : "");
+
+    $("gCount").textContent = log.length;
+    $("gCount2").textContent = log.length;
+    var a = h1(state), b = h2(state);
+    $("h1").textContent = a; $("h1b").textContent = a;
+    $("h2").textContent = b; $("h2b").textContent = b;
+    $("stateTuple").innerHTML = tupleHTML(state);
+    $("placed").textContent = placedCount(state);
+    $("goalPill").textContent = "IS-GOAL(s) = " + solved;
+    $("goalPill").className = "pill" + (solved ? " t" : "");
+
+    var inv = inversions(state);
+    $("inv").firstChild.nodeValue = String(inv);
+    $("invNote").textContent = (inv % 2 === 0) ? "even — solvable" : "odd — unreachable";
+
+    // actions
+    actionsEl.innerHTML = "";
+    acts.forEach(function(act, idx){
+      var chip = document.createElement("button");
+      chip.className = "chip"; chip.type = "button"; chip.textContent = act.name;
+      chip.addEventListener("mouseenter", function(){ preview(act); });
+      chip.addEventListener("focus", function(){ preview(act); });
+      chip.addEventListener("click", function(){ move(act.tile); });
+      actionsEl.appendChild(chip);
+      if (idx===0) preview(act);
+    });
+    if (!acts.length) { $("resultCap").textContent = "RESULT(s, a)"; }
+
+    // log
+    $("logLen").textContent = log.length + (log.length===1 ? " action" : " actions");
+    var lg = $("log"); lg.innerHTML = "";
+    var start = document.createElement("span"); start.className = "step"; start.textContent = "start"; lg.appendChild(start);
+    log.forEach(function(n, i){
+      var s = document.createElement("span");
+      s.className = "step done"; s.textContent = (i+1) + ". " + n;
+      lg.appendChild(s);
+    });
+
+    $("btnUndo").disabled = past.length === 0;
+  }
+
+  function preview(act){
+    $("resultCap").textContent = "RESULT(s, " + act.name + ")";
+    mini($("resultMini"), applyAt(state, act.tile));
+    Array.prototype.forEach.call(actionsEl.children, function(ch){
+      ch.classList.toggle("hot", ch.textContent === act.name);
+    });
+  }
+
+  // ---------- search ----------
+  function Heap(){ this.a = []; }
+  Heap.prototype.push = function(x){
+    var a=this.a; a.push(x); var i=a.length-1;
+    while (i>0){ var p=(i-1)>>1; if (a[p].k<=a[i].k) break; var t=a[p]; a[p]=a[i]; a[i]=t; i=p; }
+  };
+  Heap.prototype.pop = function(){
+    var a=this.a, top=a[0], last=a.pop();
+    if (a.length){ a[0]=last; var i=0;
+      for(;;){ var l=2*i+1, r=l+1, m=i;
+        if (l<a.length && a[l].k<a[m].k) m=l;
+        if (r<a.length && a[r].k<a[m].k) m=r;
+        if (m===i) break; var t=a[m]; a[m]=a[i]; a[i]=t; i=m; }
+    }
+    return top;
+  };
+  Heap.prototype.size = function(){ return this.a.length; };
+
+  function neighbours(s){
+    var out = [], acts = actionsFor(s);
+    for (var i=0;i<acts.length;i++) out.push({name:acts[i].name, state:applyAt(s, acts[i].tile)});
+    return out;
+  }
+  function rebuild(reached, key){
+    var acts = [], node = reached.get(key);
+    while (node && node.action){ acts.push(node.action); node = reached.get(node.parent); }
+    return acts.reverse();
+  }
+
+  function bfs(s0){
+    var t0 = performance.now(), k0 = s0.join("");
+    var reached = new Map(); reached.set(k0, {parent:null, action:null});
+    if (k0 === GOALKEY) return {expanded:0, actions:[], ms:0};
+    var q = [s0], head = 0, expanded = 0;
+    while (head < q.length){
+      var s = q[head++]; expanded++;
+      var ns = neighbours(s);
+      for (var i=0;i<ns.length;i++){
+        var k = ns[i].state.join("");
+        if (reached.has(k)) continue;
+        reached.set(k, {parent:s.join(""), action:ns[i].name});
+        if (k === GOALKEY) return {expanded:expanded, actions:rebuild(reached, k), ms:performance.now()-t0};
+        q.push(ns[i].state);
+      }
+    }
+    return {expanded:expanded, actions:null, ms:performance.now()-t0};
+  }
+
+  function bestFirst(s0, h, useG){
+    var t0 = performance.now(), k0 = s0.join("");
+    var reached = new Map(); reached.set(k0, {parent:null, action:null, g:0});
+    var frontier = new Heap();
+    frontier.push({key:k0, state:s0, g:0, k:h(s0)});
+    var expanded = 0;
+    while (frontier.size()){
+      var node = frontier.pop();
+      var rec = reached.get(node.key);
+      if (rec.g < node.g) continue;                 // stale entry
+      if (node.key === GOALKEY) return {expanded:expanded, actions:rebuild(reached, node.key), ms:performance.now()-t0};
+      expanded++;
+      var ns = neighbours(node.state);
+      for (var i=0;i<ns.length;i++){
+        var k = ns[i].state.join(""), g = node.g + 1;
+        var old = reached.get(k);
+        if (old && old.g <= g) continue;
+        reached.set(k, {parent:node.key, action:ns[i].name, g:g});
+        frontier.push({key:k, state:ns[i].state, g:g, k:(useG ? g : 0) + h(ns[i].state)});
+      }
+    }
+    return {expanded:expanded, actions:null, ms:performance.now()-t0};
+  }
+
+  var STRATS = [
+    {id:"bfs",   name:"Breadth-first",  sub:"uninformed · optimal here",      run:function(s){ return bfs(s); },                  heavy:true},
+    {id:"greedy",name:"Greedy best-first", sub:"f = h₂ · fast, not optimal",  run:function(s){ return bestFirst(s, h2, false); }},
+    {id:"astar1",name:"A* with h₁",     sub:"f = g + misplaced tiles",        run:function(s){ return bestFirst(s, h1, true); }},
+    {id:"astar2",name:"A* with h₂",     sub:"f = g + Manhattan distance",     run:function(s){ return bestFirst(s, h2, true); }}
+  ];
+  var runs = {};
+
+  function clearResults(){ runs = {}; best = null; drawResults(); }
+
+  function drawResults(){
+    results.innerHTML = "";
+    // Only optimal strategies establish the benchmark length.
+    var lengths = ["bfs","astar1","astar2"]
+      .filter(function(k){ return runs[k] && runs[k].actions; })
+      .map(function(k){ return runs[k].actions.length; });
+    best = lengths.length ? Math.min.apply(null, lengths) : null;
+
+    STRATS.forEach(function(st){
+      var r = runs[st.id];
+      var tr = document.createElement("tr");
+
+      var td1 = document.createElement("td");
+      td1.className = "strat";
+      td1.innerHTML = st.name + "<small>" + st.sub + "</small>";
+      tr.appendChild(td1);
+
+      var td2 = document.createElement("td"); td2.className = "num";
+      td2.textContent = r ? r.expanded.toLocaleString() : "—";
+      tr.appendChild(td2);
+
+      var td3 = document.createElement("td"); td3.className = "num";
+      if (r){
+        var len = r.actions ? r.actions.length : null;
+        var badge = "";
+        if (len !== null && best !== null)
+          badge = '<span class="' + (len===best ? "opt" : "subopt") + '"> ' + (len===best ? "optimal" : "+" + (len-best)) + "</span>";
+        td3.innerHTML = (len===null ? "none" : len) + badge;
+      } else td3.textContent = "—";
+      tr.appendChild(td3);
+
+      var td4 = document.createElement("td"); td4.className = "num";
+      td4.textContent = r ? (r.ms < 10 ? r.ms.toFixed(1) : Math.round(r.ms)) + " ms" : "—";
+      tr.appendChild(td4);
+
+      var td5 = document.createElement("td");
+      var btn = document.createElement("button");
+      btn.className = "btn"; btn.type = "button";
+      btn.textContent = r ? (r.actions ? "Replay" : "—") : "Run";
+      btn.disabled = !!(r && !r.actions);
+      btn.addEventListener("click", function(){
+        if (runs[st.id]) loadPlan(st);
+        else runStrategy(st, btn);
+      });
+      td5.appendChild(btn); tr.appendChild(td5);
+
+      results.appendChild(tr);
+    });
+  }
+
+  function runStrategy(st, btn){
+    if (btn){ btn.textContent = "…"; btn.disabled = true; }
+    var s = state.slice();
+    setTimeout(function(){
+      runs[st.id] = st.run(s);
+      drawResults();
+      if (st.id === "astar2" && runs[st.id].actions && s.join("") === START.join("")) {
+        $("optLen").textContent = runs[st.id].actions.length;
+      }
+    }, 20);
+  }
+
+  $("btnRunAll").addEventListener("click", function(){
+    var btn = this; btn.disabled = true; btn.textContent = "Searching…";
+    var s = state.slice(), i = 0;
+    (function next(){
+      if (i >= STRATS.length){ btn.disabled = false; btn.textContent = "Run all on current state"; return; }
+      var st = STRATS[i++];
+      runs[st.id] = st.run(s);
+      drawResults();
+      setTimeout(next, 20);
+    })();
+  });
+
+  // ---------- plan playback ----------
+  function loadPlan(st){
+    var r = runs[st.id]; if (!r || !r.actions) return;
+    var states = [state.slice()], cur = state.slice();
+    r.actions.forEach(function(name){
+      var b = cur.indexOf(0), tile = null;
+      for (var i=0;i<DIRS.length;i++) if (DIRS[i].name===name) tile = b + DIRS[i].d;
+      cur = applyAt(cur, tile); states.push(cur.slice());
+    });
+    plan = {actions:r.actions, states:states, label:st.name};
+    planIdx = 0;
+    $("planBox").hidden = false;
+    $("planCap").textContent = st.name + " — " + r.actions.length + " moves";
+    drawPlan();
+  }
+
+  function drawPlan(){
+    if (!plan) return;
+    var box = $("planSteps"); box.innerHTML = "";
+    plan.actions.forEach(function(n, i){
+      var s = document.createElement("span");
+      s.className = "step" + (i < planIdx ? " done" : (i === planIdx ? " now" : ""));
+      s.textContent = (i+1) + ". " + n;
+      s.addEventListener("click", function(){ gotoStep(i); });
+      s.style.cursor = "pointer";
+      box.appendChild(s);
+    });
+    $("planCount").textContent = "step " + planIdx + " / " + plan.actions.length;
+    $("btnPrev").disabled = planIdx === 0;
+    $("btnFirst").disabled = planIdx === 0;
+    $("btnNext").disabled = planIdx >= plan.actions.length;
+    $("btnLast").disabled = planIdx >= plan.actions.length;
+  }
+
+  function gotoStep(i){
+    if (!plan) return;
+    planIdx = Math.max(0, Math.min(plan.actions.length, i));
+    state = plan.states[planIdx].slice();
+    log = plan.actions.slice(0, planIdx);
+    past = [];
+    render(); drawPlan();
+  }
+  function stopPlay(){ if (timer){ clearInterval(timer); timer = null; $("btnPlay").textContent = "Play"; } }
+
+  $("btnPrev").addEventListener("click", function(){ stopPlay(); gotoStep(planIdx-1); });
+  $("btnNext").addEventListener("click", function(){ stopPlay(); gotoStep(planIdx+1); });
+  $("btnFirst").addEventListener("click", function(){ stopPlay(); gotoStep(0); });
+  $("btnLast").addEventListener("click", function(){ stopPlay(); gotoStep(plan ? plan.actions.length : 0); });
+  $("btnPlay").addEventListener("click", function(){
+    if (timer){ stopPlay(); return; }
+    if (!plan) return;
+    if (planIdx >= plan.actions.length) gotoStep(0);
+    this.textContent = "Pause";
+    timer = setInterval(function(){
+      if (!plan || planIdx >= plan.actions.length){ stopPlay(); return; }
+      gotoStep(planIdx + 1);
+    }, 420);
+  });
+
+  // ---------- controls ----------
+  $("btnUndo").addEventListener("click", function(){
+    if (!past.length) return;
+    stopPlay();
+    state = past.pop(); log.pop();
+    if (plan){ plan = null; $("planBox").hidden = true; }
+    clearResults(); render();
+  });
+  $("btnReset").addEventListener("click", function(){ setState(START); });
+  $("btnGoal").addEventListener("click", function(){ setState(GOAL); });
+  $("btnScramble").addEventListener("click", function(){
+    var s = GOAL.slice(), prev = -1;
+    for (var n=0;n<80;n++){
+      var acts = actionsFor(s).filter(function(a){ return a.tile !== prev; });
+      var a = acts[Math.floor(Math.random()*acts.length)];
+      prev = s.indexOf(0);
+      s = applyAt(s, a.tile);
+    }
+    setState(s);
+  });
+
+  // ---------- share / QR ----------
+  var DEFAULT_URL = "https://claude.ai/artifact/EEnzDKo6bUnZrgVTAasAMz";
+  var LS_KEY = "eight-puzzle-share-url";
+  var qrBox = $("qrCard"), overlay = $("qrOverlay"), qrInput = $("qrInput");
+
+  function ownUrl(){
+    // Self-hosted: the page's own address is the right link. Inside the artifact
+    // viewer the page runs in a sandboxed frame, so fall back to the shareable URL.
+    try {
+      if (window.self === window.top && /^https?:$/.test(location.protocol)) return location.href.split("#")[0];
+    } catch (e) {}
+    return DEFAULT_URL;
+  }
+  function storedUrl(){
+    try { return localStorage.getItem(LS_KEY) || ownUrl(); } catch (e) { return ownUrl(); }
+  }
+  function rememberUrl(u){ try { localStorage.setItem(LS_KEY, u); } catch (e) {} }
+
+  function drawQR(url){
+    $("qrUrl").textContent = url;
+    qrBox.innerHTML = "";
+    if (typeof QRCode === "undefined"){
+      qrBox.style.lineHeight = "1.5";
+      qrBox.style.color = "#0f2230";
+      qrBox.textContent = "QR library unavailable — read the link out instead.";
+      return;
+    }
+    var size = Math.round(Math.max(200, Math.min(window.innerWidth - 90, window.innerHeight - 300, 460)));
+    new QRCode(qrBox, {text:url, width:size, height:size, correctLevel:QRCode.CorrectLevel.M});
+  }
+
+  function openQR(){
+    var u = storedUrl();
+    qrInput.value = u;
+    overlay.hidden = false;
+    drawQR(u);
+    $("btnClose").focus();
+  }
+  function closeQR(){ overlay.hidden = true; $("btnQR").focus(); }
+
+  $("btnQR").addEventListener("click", openQR);
+  $("btnClose").addEventListener("click", closeQR);
+  document.addEventListener("keydown", function(e){
+    if (e.key === "Escape" && !overlay.hidden) closeQR();
+  });
+  qrInput.addEventListener("input", function(){
+    var u = qrInput.value.trim();
+    if (!u) return;
+    rememberUrl(u); drawQR(u);
+  });
+  $("btnCopy").addEventListener("click", function(){
+    var btn = this, u = qrInput.value.trim();
+    try {
+      navigator.clipboard.writeText(u).then(function(){
+        btn.textContent = "Copied"; setTimeout(function(){ btn.textContent = "Copy link"; }, 1400);
+      }, function(){ qrInput.select(); });
+    } catch (e) { qrInput.select(); }
+  });
+  window.addEventListener("resize", function(){
+    if (!overlay.hidden) drawQR(qrInput.value.trim() || storedUrl());
+  });
+
+  // ---------- boot ----------
+  function boot(data){
+    if (data && Array.isArray(data.state) && data.state.length === 9){
+      state = data.state.slice();
+      log = Array.isArray(data.log) ? data.log.slice() : [];
+    }
+    mini($("goalMini"), GOAL);
+    render();
+    drawResults();
+    // Seed the table with the informed search so the page opens with real numbers.
+    runs.astar2 = bestFirst(state.slice(), h2, true);
+    drawResults();
+    if (runs.astar2.actions && state.join("") === START.join("")) $("optLen").textContent = runs.astar2.actions.length;
+  }
+
+  try {
+    if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(boot);
+    else boot((window.claude && window.claude.hot && window.claude.hot.data) || {});
+    if (window.claude && window.claude.hot && window.claude.hot.snapshot)
+      window.claude.hot.snapshot(function(){ return {state:state, log:log}; });
+  } catch (e) { boot({}); }
+})();
+</script>
