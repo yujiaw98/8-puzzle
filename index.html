@@ -1,3 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A playable 8-puzzle that shows the search-problem formulation updating with every move.">
+<style>
+  /* Standalone reset — the Artifact host supplies its own; a self-hosted copy needs one. */
+  :root{
+    color-scheme:light dark;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  body{margin:0}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+</style>
 <title>8-Puzzle Search Lab</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&display=swap">
@@ -81,6 +98,7 @@
   }
   h1,h2,h3{margin:0;text-wrap:balance}
   button{font:inherit;color:inherit}
+  [hidden]{display:none!important}   /* must outrank .overlay{display:flex} */
 
   /* ---------- header ---------- */
   .masthead{
@@ -267,6 +285,8 @@
 
   @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
+</head>
+<body>
 
 <div class="wrap">
   <header class="masthead">
@@ -448,7 +468,7 @@
     <button class="btn" id="btnCopy" type="button">Copy link</button>
     <button class="btn primary" id="btnClose" type="button">Close</button>
   </div>
-  <p class="note">Paste whatever link the class should open. It is remembered in this browser, so the code is ready next time you project.</p>
+  <p class="note">The code points at this page. Paste a different link to hand out something else — empty the box to go back.</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -865,7 +885,6 @@
 
   // ---------- share / QR ----------
   var DEFAULT_URL = "https://claude.ai/artifact/EEnzDKo6bUnZrgVTAasAMz";
-  var LS_KEY = "eight-puzzle-share-url";
   var qrBox = $("qrCard"), overlay = $("qrOverlay"), qrInput = $("qrInput");
 
   function ownUrl(){
@@ -876,26 +895,33 @@
     } catch (e) {}
     return DEFAULT_URL;
   }
-  function storedUrl(){
-    try { return localStorage.getItem(LS_KEY) || ownUrl(); } catch (e) { return ownUrl(); }
+
+  function failQR(msg){
+    qrBox.style.lineHeight = "1.5";
+    qrBox.style.color = "#0f2230";
+    qrBox.style.maxWidth = "34ch";
+    qrBox.textContent = msg;
   }
-  function rememberUrl(u){ try { localStorage.setItem(LS_KEY, u); } catch (e) {} }
 
   function drawQR(url){
+    url = (url || "").trim() || ownUrl();
     $("qrUrl").textContent = url;
     qrBox.innerHTML = "";
+    qrBox.style.lineHeight = "0";
     if (typeof QRCode === "undefined"){
-      qrBox.style.lineHeight = "1.5";
-      qrBox.style.color = "#0f2230";
-      qrBox.textContent = "QR library unavailable — read the link out instead.";
+      failQR("The QR library did not load. Read the link out instead: " + url);
       return;
     }
-    var size = Math.round(Math.max(200, Math.min(window.innerWidth - 90, window.innerHeight - 300, 460)));
-    new QRCode(qrBox, {text:url, width:size, height:size, correctLevel:QRCode.CorrectLevel.M});
+    var size = Math.round(Math.max(240, Math.min(window.innerWidth - 80, window.innerHeight - 260, 560)));
+    try {
+      new QRCode(qrBox, {text:url, width:size, height:size, correctLevel:QRCode.CorrectLevel.M});
+    } catch (e) {
+      failQR("That link could not be encoded. Read it out instead: " + url);
+    }
   }
 
   function openQR(){
-    var u = storedUrl();
+    var u = ownUrl();
     qrInput.value = u;
     overlay.hidden = false;
     drawQR(u);
@@ -909,9 +935,7 @@
     if (e.key === "Escape" && !overlay.hidden) closeQR();
   });
   qrInput.addEventListener("input", function(){
-    var u = qrInput.value.trim();
-    if (!u) return;
-    rememberUrl(u); drawQR(u);
+    drawQR(qrInput.value);   // blanking the box falls back to this page's own address
   });
   $("btnCopy").addEventListener("click", function(){
     var btn = this, u = qrInput.value.trim();
@@ -922,7 +946,7 @@
     } catch (e) { qrInput.select(); }
   });
   window.addEventListener("resize", function(){
-    if (!overlay.hidden) drawQR(qrInput.value.trim() || storedUrl());
+    if (!overlay.hidden) drawQR(qrInput.value);
   });
 
   // ---------- boot ----------
@@ -948,3 +972,6 @@
   } catch (e) { boot({}); }
 })();
 </script>
+
+</body>
+</html>
