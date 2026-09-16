@@ -116,14 +116,32 @@
   .masthead p{margin:0 0 3px;color:var(--muted);max-width:44ch;font-size:14px}
 
   /* ---------- layout ---------- */
-  .cols{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:28px;margin-top:26px;align-items:start}
-  @media (max-width:860px){.cols{grid-template-columns:1fr;gap:22px}}
+  /* The left column stretches to the row height so its inner wrapper has room to stick. */
+  .cols{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:28px;margin-top:26px}
+  @media (min-width:861px){
+    /* Keep the board in view while the search lab is being worked, far down the right column. */
+    .board-sticky{position:sticky;top:calc(16px + env(safe-area-inset-top,0px))}
+    body.has-minibar .board-sticky{top:calc(12px + env(safe-area-inset-top,0px))}
+  }
+  /* minmax(0,1fr), not 1fr: the results table's min-width would otherwise widen the column. */
+  @media (max-width:860px){.cols{grid-template-columns:minmax(0,1fr);gap:22px}}
+
+  /* The lab always sits well below the board, so playback keeps its own fixed bar. */
+  .minibar{
+    position:fixed;left:0;right:0;bottom:0;z-index:40;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;
+    background:var(--surface);border-top:1px solid var(--line);
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));
+    box-shadow:0 -6px 24px -18px rgba(0,0,0,.7);
+  }
+  .minibar .count{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  body.has-minibar{padding-bottom:64px}
 
   .panel{
     background:var(--surface);border:1px solid var(--line);border-radius:4px;
     box-shadow:var(--shadow);
   }
-  .panel + .panel{margin-top:18px}
+  .panel + .panel,.board-sticky + .panel{margin-top:18px}
   .panel-hd{
     display:flex;align-items:baseline;justify-content:space-between;gap:10px;
     padding:12px 16px;border-bottom:1px solid var(--line-soft);
@@ -303,7 +321,7 @@
 
   <div class="cols">
     <!-- ============ LEFT: the board ============ -->
-    <div>
+    <div class="board-col"><div class="board-sticky">
       <section class="panel">
         <div class="panel-hd">
           <h2>Current state</h2>
@@ -326,6 +344,7 @@
         </div>
         <p class="hint">Click a tile next to the blank, or use the arrow keys.<br>Arrow keys move <em>the blank</em> — that is what the action is named after.</p>
       </section>
+      </div>
 
       <section class="panel">
         <div class="panel-hd"><h2>Move log</h2><span class="pill" id="logLen">0 actions</span></div>
@@ -459,6 +478,14 @@
   </div>
 </div>
 
+<div class="minibar" id="miniBar" hidden>
+  <button class="btn" id="mbPrev" type="button">◀</button>
+  <button class="btn primary" id="mbPlay" type="button">Play</button>
+  <button class="btn" id="mbNext" type="button">▶</button>
+  <span class="count" id="mbCount">step 0 / 0</span>
+  <button class="btn" id="mbDone" type="button">Done</button>
+</div>
+
 <div class="overlay" id="qrOverlay" hidden>
   <h2>Scan to play on your phone</h2>
   <div class="qr-card" id="qrCard"></div>
@@ -553,15 +580,15 @@
     past.push(state.slice());
     state = applyAt(state, tileIdx);
     log.push(name);
-    if (plan) { plan = null; $("planBox").hidden = true; }
+    if (plan) endPlan();
     clearResults();
     render();
   }
 
   function setState(s, label){
     stopPlay();
-    past = []; log = []; state = s.slice(); plan = null;
-    $("planBox").hidden = true;
+    past = []; log = []; state = s.slice();
+    if (plan) endPlan();
     clearResults();
     render();
   }
@@ -816,7 +843,22 @@
     planIdx = 0;
     $("planBox").hidden = false;
     $("planCap").textContent = st.name + " — " + r.actions.length + " moves";
+    showMiniBar();
     drawPlan();
+    // In one-column layout the board is a screen above the lab — bring it back.
+    if (window.matchMedia("(max-width: 860px)").matches)
+      $("board").scrollIntoView({behavior:"smooth", block:"center"});
+  }
+
+  function showMiniBar(){
+    var on = !!plan;
+    $("miniBar").hidden = !on;
+    document.body.classList.toggle("has-minibar", on);
+  }
+  function endPlan(){
+    stopPlay(); plan = null;
+    $("planBox").hidden = true;
+    showMiniBar();
   }
 
   function drawPlan(){
@@ -830,11 +872,16 @@
       s.style.cursor = "pointer";
       box.appendChild(s);
     });
-    $("planCount").textContent = "step " + planIdx + " / " + plan.actions.length;
-    $("btnPrev").disabled = planIdx === 0;
-    $("btnFirst").disabled = planIdx === 0;
-    $("btnNext").disabled = planIdx >= plan.actions.length;
-    $("btnLast").disabled = planIdx >= plan.actions.length;
+    var label = "step " + planIdx + " / " + plan.actions.length;
+    $("planCount").textContent = label;
+    $("mbCount").textContent = label;
+    var atStart = planIdx === 0, atEnd = planIdx >= plan.actions.length;
+    $("btnPrev").disabled = atStart;
+    $("btnFirst").disabled = atStart;
+    $("mbPrev").disabled = atStart;
+    $("btnNext").disabled = atEnd;
+    $("btnLast").disabled = atEnd;
+    $("mbNext").disabled = atEnd;
   }
 
   function gotoStep(i){
@@ -845,29 +892,38 @@
     past = [];
     render(); drawPlan();
   }
-  function stopPlay(){ if (timer){ clearInterval(timer); timer = null; $("btnPlay").textContent = "Play"; } }
+  function stopPlay(){
+    if (!timer) return;
+    clearInterval(timer); timer = null;
+    $("btnPlay").textContent = "Play"; $("mbPlay").textContent = "Play";
+  }
+  function togglePlay(){
+    if (timer){ stopPlay(); return; }
+    if (!plan) return;
+    if (planIdx >= plan.actions.length) gotoStep(0);
+    $("btnPlay").textContent = "Pause"; $("mbPlay").textContent = "Pause";
+    timer = setInterval(function(){
+      if (!plan || planIdx >= plan.actions.length){ stopPlay(); return; }
+      gotoStep(planIdx + 1);
+    }, 420);
+  }
 
   $("btnPrev").addEventListener("click", function(){ stopPlay(); gotoStep(planIdx-1); });
   $("btnNext").addEventListener("click", function(){ stopPlay(); gotoStep(planIdx+1); });
   $("btnFirst").addEventListener("click", function(){ stopPlay(); gotoStep(0); });
   $("btnLast").addEventListener("click", function(){ stopPlay(); gotoStep(plan ? plan.actions.length : 0); });
-  $("btnPlay").addEventListener("click", function(){
-    if (timer){ stopPlay(); return; }
-    if (!plan) return;
-    if (planIdx >= plan.actions.length) gotoStep(0);
-    this.textContent = "Pause";
-    timer = setInterval(function(){
-      if (!plan || planIdx >= plan.actions.length){ stopPlay(); return; }
-      gotoStep(planIdx + 1);
-    }, 420);
-  });
+  $("btnPlay").addEventListener("click", togglePlay);
+  $("mbPlay").addEventListener("click", togglePlay);
+  $("mbPrev").addEventListener("click", function(){ stopPlay(); gotoStep(planIdx-1); });
+  $("mbNext").addEventListener("click", function(){ stopPlay(); gotoStep(planIdx+1); });
+  $("mbDone").addEventListener("click", endPlan);
 
   // ---------- controls ----------
   $("btnUndo").addEventListener("click", function(){
     if (!past.length) return;
     stopPlay();
     state = past.pop(); log.pop();
-    if (plan){ plan = null; $("planBox").hidden = true; }
+    if (plan) endPlan();
     clearResults(); render();
   });
   $("btnReset").addEventListener("click", function(){ setState(START); });
