@@ -656,12 +656,16 @@
     // log
     $("logLen").textContent = log.length + (log.length===1 ? " action" : " actions");
     var lg = $("log"); lg.innerHTML = "";
-    var start = document.createElement("span"); start.className = "step"; start.textContent = "start"; lg.appendChild(start);
-    log.forEach(function(n, i){
-      var s = document.createElement("span");
-      s.className = "step done"; s.textContent = (i+1) + ". " + n;
-      lg.appendChild(s);
-    });
+    // Replaying a depth-first plan can fill this with tens of thousands of moves.
+    var LOG_TAIL = 60, from = Math.max(0, log.length - LOG_TAIL);
+    var head = document.createElement("span"); head.className = "step";
+    head.textContent = from > 0 ? "… " + from.toLocaleString() + " earlier" : "start";
+    lg.appendChild(head);
+    for (var li=from;li<log.length;li++){
+      var e = document.createElement("span");
+      e.className = "step done"; e.textContent = (li+1) + ". " + log[li];
+      lg.appendChild(e);
+    }
 
     $("btnUndo").disabled = past.length === 0;
   }
@@ -748,12 +752,88 @@
 
   function zero(){ return 0; }
 
+  function dfs(s0){
+    // Graph search, so it terminates; the path it returns is its own tree depth, not a short one.
+    var t0 = performance.now(), k0 = s0.join("");
+    if (k0 === GOALKEY) return {expanded:0, actions:[], ms:0};
+    var reached = new Map(); reached.set(k0, {parent:null, action:null});
+    var stack = [s0], expanded = 0;
+    while (stack.length){
+      var s = stack.pop(); expanded++;
+      var ns = neighbours(s);
+      for (var i=0;i<ns.length;i++){
+        var k = ns[i].state.join("");
+        if (reached.has(k)) continue;
+        reached.set(k, {parent:s.join(""), action:ns[i].name});
+        if (k === GOALKEY) return {expanded:expanded, actions:rebuild(reached, k), ms:performance.now()-t0};
+        stack.push(ns[i].state);
+      }
+    }
+    return {expanded:expanded, actions:null, ms:performance.now()-t0};
+  }
+
+  function beam(s0, h, width){
+    // Only the best `width` nodes of each layer survive, so the search can lose the goal entirely.
+    var t0 = performance.now(), k0 = s0.join("");
+    if (k0 === GOALKEY) return {expanded:0, actions:[], ms:0};
+    var reached = new Map(); reached.set(k0, {parent:null, action:null});
+    var layer = [s0], expanded = 0;
+    while (layer.length){
+      var cand = [];
+      for (var i=0;i<layer.length;i++){
+        var s = layer[i]; expanded++;
+        var ns = neighbours(s);
+        for (var j=0;j<ns.length;j++){
+          var k = ns[j].state.join("");
+          if (reached.has(k)) continue;
+          reached.set(k, {parent:s.join(""), action:ns[j].name});
+          if (k === GOALKEY) return {expanded:expanded, actions:rebuild(reached, k), ms:performance.now()-t0};
+          cand.push({state:ns[j].state, h:h(ns[j].state)});
+        }
+      }
+      cand.sort(function(a,b){ return a.h - b.h; });
+      layer = cand.slice(0, width).map(function(c){ return c.state; });
+    }
+    return {expanded:expanded, actions:null, ms:performance.now()-t0};   // the beam ran dry
+  }
+
+  function idaStar(s0, h){
+    // A* order, DFS memory: each round re-walks the tree under a rising f-bound.
+    var t0 = performance.now(), expanded = 0, path = [];
+    function step(s, g, cameFrom){
+      var f = g + h(s);
+      if (f > bound) return f;                       // too deep this round; report its f
+      if (s.join("") === GOALKEY) return "FOUND";
+      expanded++;
+      var min = Infinity, ns = neighbours(s), b = s.indexOf(0);
+      for (var i=0;i<ns.length;i++){
+        if (ns[i].state.indexOf(0) === cameFrom) continue;   // never undo the move just made
+        path.push(ns[i].name);
+        var t = step(ns[i].state, g + 1, b);
+        if (t === "FOUND") return "FOUND";
+        if (t < min) min = t;
+        path.pop();
+      }
+      return min;
+    }
+    var bound = h(s0);
+    for (;;){
+      var t = step(s0, 0, -1);
+      if (t === "FOUND") return {expanded:expanded, actions:path.slice(), ms:performance.now()-t0};
+      if (t === Infinity) return {expanded:expanded, actions:null, ms:performance.now()-t0};
+      bound = t;
+    }
+  }
+
   var STRATS = [
     {id:"bfs",   name:"Breadth-first",     sub:"uninformed · goal test on generation", run:function(s){ return bfs(s); }},
     {id:"ucs",   name:"Uniform-cost",      sub:"f = g · goal test on expansion",       run:function(s){ return bestFirst(s, zero, true); }},
+    {id:"dfs",   name:"Depth-first",       sub:"uninformed · first path found, any length", run:function(s){ return dfs(s); }},
     {id:"greedy",name:"Greedy best-first", sub:"f = h₂ · fast, not optimal",           run:function(s){ return bestFirst(s, h2, false); }},
+    {id:"beam",  name:"Beam search, k = 10", sub:"best 10 of each layer by h₂ · can fail", run:function(s){ return beam(s, h2, 10); }},
     {id:"astar1",name:"A* with h₁",        sub:"f = g + misplaced tiles",              run:function(s){ return bestFirst(s, h1, true); }},
-    {id:"astar2",name:"A* with h₂",        sub:"f = g + Manhattan distance",           run:function(s){ return bestFirst(s, h2, true); }}
+    {id:"astar2",name:"A* with h₂",        sub:"f = g + Manhattan distance",           run:function(s){ return bestFirst(s, h2, true); }},
+    {id:"ida",   name:"IDA* with h₂",      sub:"A* order, depth-first memory",         run:function(s){ return idaStar(s, h2); }}
   ];
   var runs = {};
 
@@ -762,7 +842,7 @@
   function drawResults(){
     results.innerHTML = "";
     // Only optimal strategies establish the benchmark length.
-    var lengths = ["bfs","ucs","astar1","astar2"]
+    var lengths = ["bfs","ucs","astar1","astar2","ida"]
       .filter(function(k){ return runs[k] && runs[k].actions; })
       .map(function(k){ return runs[k].actions.length; });
     best = lengths.length ? Math.min.apply(null, lengths) : null;
@@ -864,17 +944,30 @@
     showMiniBar();
   }
 
+  var CHIP_CAP = 120;   // a depth-first plan can run to tens of thousands of moves
+
   function drawPlan(){
     if (!plan) return;
     var box = $("planSteps"); box.innerHTML = "";
-    plan.actions.forEach(function(n, i){
-      var s = document.createElement("span");
-      s.className = "step" + (i < planIdx ? " done" : (i === planIdx ? " now" : ""));
-      s.textContent = (i+1) + ". " + n;
-      s.addEventListener("click", function(){ gotoStep(i); });
-      s.style.cursor = "pointer";
-      box.appendChild(s);
-    });
+    var len = plan.actions.length;
+    var from = len > CHIP_CAP ? Math.max(0, Math.min(planIdx - 30, len - CHIP_CAP)) : 0;
+    var to = Math.min(len, from + CHIP_CAP);
+    function marker(text){
+      var e = document.createElement("span");
+      e.className = "step"; e.textContent = text; box.appendChild(e);
+    }
+    if (from > 0) marker("… " + from.toLocaleString() + " earlier");
+    for (var i=from;i<to;i++){
+      (function(i){
+        var s = document.createElement("span");
+        s.className = "step" + (i < planIdx ? " done" : (i === planIdx ? " now" : ""));
+        s.textContent = (i+1) + ". " + plan.actions[i];
+        s.addEventListener("click", function(){ gotoStep(i); });
+        s.style.cursor = "pointer";
+        box.appendChild(s);
+      })(i);
+    }
+    if (to < len) marker("… " + (len - to).toLocaleString() + " more");
     var label = "step " + planIdx + " / " + plan.actions.length;
     $("planCount").textContent = label;
     $("mbCount").textContent = label;
